@@ -7,7 +7,7 @@
 
 =head1 AUTHOR AND COPYRIGHT
 
-  Copyright 2011 Luc Didry <luc AT didry.org>
+  Copyright 2011-2012 Luc Didry <luc AT didry.org>
 
 =head1 HOWTO CONFIGURE AND USE :
 
@@ -113,7 +113,7 @@ while(defined (my $foo = <FILE>)) {
     if ($foo =~ m/(\d+)\s+(.+)/) {
         my ($field, $value) = ($2, $1);
         clean_path(\$field);
-        print $field, ".value ", $value, "\n"; 
+        print $field, ".value ", $value, "\n";
     }
 }
 close(FILE);
@@ -159,8 +159,20 @@ sub cache_is_too_old {
 } ## cache_is_too_old
 
 sub du_not_running {
-	return 0 if (-e $LOCKFILE);
-	return 1;
+    if (-e $LOCKFILE) {
+        my ($time) = `cat $TIMEFILE`;
+        chomp $time;
+        if ( (time - $time) > ($ENV{interval}*60*60) ) {
+            # The cache is really old (60xinterval) => Maybe the lockfile wasn't properly deleted.
+            # Let's delete it.
+            system("rm $LOCKFILE;");
+            return 1;
+        } else {
+	        return 0;
+        }
+    } else {
+        return 1;
+    }
 }
 
 sub munin_exit_done {
