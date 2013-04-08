@@ -35,14 +35,14 @@
   if none are set, all the policy will be used.
 
 
-=item - /etc/munin/plugins/postfwd2
+=item - /etc/munin/plugins-enabled
 
-     cp postfwd2 /etc/munin/plugins/
+     ln -svf ../plugins-available/site/postfwd2
 
 
 =item - restart Munin node
 
-     /etc/init.d/munin-node restart
+     sudo killall -TERM munin-node
 
 =back
 
@@ -118,13 +118,13 @@ my %graphs = (
         series => {
             policy_timeout => {
                 label => 'Policy timeout',
-                type  => 'GAUGE'
+                type  => 'COUNTER'
             }
         }
     },
     policy_matchs => {
         title  => 'Policy matchs',
-        vlabel => 'Nb of matchs'
+        vlabel => 'Matchs percentage'
     }
 );
 
@@ -153,13 +153,14 @@ close(FILE);
 my %policies = map { $_, 1 } @policies;
 foreach my $policy (keys %policies) {
     chomp $policy;
-    $graphs{policy_matchs}->{series}->{$policy}->{type}   = 'COUNTER';
+    $graphs{policy_matchs}->{series}->{$policy}->{type}   = 'GAUGE';
     $graphs{policy_matchs}->{series}->{$policy}->{label}  = $policy;
     $graphs{policy_matchs}->{series}->{$policy}->{value}  = 0;
 }
 
 ##### I have to parse the output BEFORE config, since policy matchs are dependant of the postfwd --dumpstats output
 open(DATA, $ENV{path}.' --dumpstats |') or munin_exit_fail();
+my $total_requests;
 while(defined (my $data = <DATA>)) {
     if ($data =~ m/^\[STATS\] postfwd2::cache .*: (\d+) queries since/) {
          $graphs{cache_queries}->{series}->{cache_queries}->{value} = $1;
@@ -171,21 +172,22 @@ while(defined (my $data = <DATA>)) {
     }
     if ($data =~ m/^\[STATS\] postfwd2::policy .*: (\d+) requests since/) {
         $graphs{policy_requests}->{series}->{policy_requests}->{value} = $1;
+        $total_requests = $1;
     }
     if ($data =~ m/^\[STATS\] Timeouts: .*% \((\d+) of \d+ dns queries\)$/) {
         $graphs{policy_timeout}->{series}->{policy_timeout}->{value} = $1;
     }
-    if ($data =~ m/^\[STATS\]   (\d+) matches for id:  (.*)$/) {
+    if ($data =~ m/^\[STATS\] +(\d+) matches for id:  (.*)$/) {
         my ($value, $label) = ($1, $2);
         if ( ( !defined($exclude) ) || ( $label !~ m/$exclude/ || ( defined($include) && $label =~ m/$include/ ) ) ) {
             if (!defined($policies{$label})) {
                 open (FILE, ">>", $CACHEFILE) or munin_exit_fail();
                 print FILE $label, "\n";
                 close(FILE);
-                $graphs{policy_matchs}->{series}->{$label}->{type} = 'COUNTER';
+                $graphs{policy_matchs}->{series}->{$label}->{type} = 'GAUGE';
                 $graphs{policy_matchs}->{series}->{$label}->{label} = $label;
             }
-            $graphs{policy_matchs}->{series}->{$label}->{value} = $value;
+            $graphs{policy_matchs}->{series}->{$label}->{value} = sprintf("%.2f", 100*$value/$total_requests);
         }
     }
 }
@@ -200,14 +202,15 @@ if( (defined $ARGV[0]) && ($ARGV[0] eq 'config') ) {
         my $args = ($key eq 'cache_stats') ? ' --upper-limit 100 --rigid' : '';
         print 'graph_args --lower-limit 0', $args, "\n";
         print 'graph_category mail', "\n";
-        foreach my $label (keys %{$graphs{$key}->{series}}) {
-            print $label, '.label ', $graphs{$key}->{series}->{$label}->{label}, "\n";
-            print $label, '.draw AREASTACK', "\n";
-            print $label, '.type ', $graphs{$key}->{series}->{$label}->{type}, "\n";
-        }
         if ($key eq 'policy_matchs') {
             print 'graph_width 600', "\n";
-            foreach my $label (keys %{$graphs{$key}->{series}}) {
+            my @pol_keys = sort { $graphs{$key}->{series}->{$b}->{value} <=> $graphs{$key}->{series}->{$a}->{value} } keys %{$graphs{$key}->{series}};
+            foreach my $label (@pol_keys) {
+                print $label, '.label ', $graphs{$key}->{series}->{$label}->{label}, "\n";
+                print $label, '.draw LINE', "\n";
+                print $label, '.type ', $graphs{$key}->{series}->{$label}->{type}, "\n";
+            }
+            foreach my $label (@pol_keys) {
                 print 'multigraph postfwd2_', $key, '.', $label, "\n";
                 print 'graph_title Postfwd2 ', $label, "\n";
                 print 'graph_vlabel ', $graphs{$key}->{vlabel}, "\n";
@@ -215,8 +218,14 @@ if( (defined $ARGV[0]) && ($ARGV[0] eq 'config') ) {
                 print 'graph_args --lower-limit 0 ', $args, "\n";
                 print 'graph_category others', "\n";
                 print $label, '.label ', $graphs{$key}->{series}->{$label}->{label}, "\n";
+                print $label, '.draw LINE', "\n";
+                print $label, '.type GAUGE', "\n";
+            }
+        } else {
+            foreach my $label (keys %{$graphs{$key}->{series}}) {
+                print $label, '.label ', $graphs{$key}->{series}->{$label}->{label}, "\n";
                 print $label, '.draw AREASTACK', "\n";
-                print $label, '.type COUNTER', "\n";
+                print $label, '.type ', $graphs{$key}->{series}->{$label}->{type}, "\n";
             }
         }
     }
@@ -226,12 +235,17 @@ if( (defined $ARGV[0]) && ($ARGV[0] eq 'config') ) {
 ##### fetch
 foreach my $key (@keys) {
     print 'multigraph postfwd2_', $key, "\n";
-    foreach my $label (keys %{$graphs{$key}->{series}}) {
-        print $label, '.value ', $graphs{$key}->{series}->{$label}->{value}, "\n";
-    }
     if ($key eq 'policy_matchs') {
-        foreach my $label (keys %{$graphs{$key}->{series}}) {
+        my @pol_keys = sort { $graphs{$key}->{series}->{$b}->{value} <=> $graphs{$key}->{series}->{$a}->{value} } keys %{$graphs{$key}->{series}};
+        foreach my $label (@pol_keys) {
+            print $label, '.value ', $graphs{$key}->{series}->{$label}->{value}, "\n";
+        }
+        foreach my $label (@pol_keys) {
             print 'multigraph postfwd2_', $key, '.', $label, "\n";
+            print $label, '.value ', $graphs{$key}->{series}->{$label}->{value}, "\n";
+        }
+    } else {
+        foreach my $label (keys %{$graphs{$key}->{series}}) {
             print $label, '.value ', $graphs{$key}->{series}->{$label}->{value}, "\n";
         }
     }
