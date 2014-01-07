@@ -7,7 +7,7 @@
 
 =head1 AUTHOR AND COPYRIGHT
 
-  Copyright 2013 Luc Didry <luc AT didry.org>
+  Copyright 2013-2014 Luc Didry <luc AT didry.org>
 
 =head1 HOWTO CONFIGURE AND USE :
 
@@ -17,7 +17,7 @@
 
      [postfwd2]
      user root
-     env.path /usr/local/sbin/postfwd2 # OPTIONAL : look for postfwd2 in /bin, /sbin, /usr/bin, /usr/sbin, /usr/local/bin, /usr/local/sbin
+     env.path /usr/local/sbin/postfwd2 # OPTIONAL : looks for postfwd2 in /bin, /sbin, /usr/bin, /usr/sbin, /usr/local/bin, /usr/local/sbin
      env.include .*ISBAD #OPTIONAL
      env.exclude .*ISGOOD #OPTIONAL
 
@@ -35,21 +35,16 @@
   if none are set, all the policy will be used.
 
 
-=item - /etc/munin/plugins-enabled
+=item - /etc/munin/plugins
 
-     ln -svf ../plugins-available/site/postfwd2
+     cp postfwd2 /etc/munin/plugins
 
 
 =item - restart Munin node
 
-     sudo killall -TERM munin-node
+     service munin-node restart
 
 =back
-
-=head1 MAGIC MARKERS
-
-  #%# family=auto
-  #%# capabilities=autoconf
 
 =head1 LICENSE
 
@@ -134,12 +129,6 @@ my $CACHEFILE="$Munin::Plugin::pluginstatedir/postfwd2.cache";
 my ($include, $exclude) = ($ENV{include}, $ENV{exclude});
 if (defined($include) && (!defined($exclude))) {
     $exclude = '.*';
-}
-
-##### autoconf
-if( (defined $ARGV[0]) && ($ARGV[0] eq 'autoconf') ) {
-    print 'yes', "\n";
-    munin_exit_done();
 }
 
 ##### Cache file, to continue to graph old policies which doesn't exist anymore
