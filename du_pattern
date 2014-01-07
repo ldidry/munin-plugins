@@ -11,14 +11,20 @@
 =head1 CONFIGURATION
 
     [du_pattern]
-    env.DIR /var/log/apache/ARCH
+    env.DIR /var/log/apache/
     env.PATTERN www.example.com www.sample.com
 
     In PATTERN, all items will be expanded like this : www.example.com*
+    In this example, you will monitor the size of :
+        /var/log/apache/www.example.com*
+        /var/log/apache/www.sample.com*
+
+    It's useful if you want to graph the size of your sites' log archives for example,
+    one graph per site.
 
 =head1 AUTHOR AND COPYRIGHT
 
-    Copyright 2013 Luc Didry <luc AT didry.org>
+    Copyright 2013-2014 Luc Didry <luc AT didry.org>
 
 =head1 LICENSE
 
