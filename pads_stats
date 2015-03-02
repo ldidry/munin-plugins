@@ -1,0 +1,130 @@
+#!/usr/bin/perl
+# vim: set filetype=perl sw=4 tabstop=4 expandtab smartindent: #
+
+=head1 NAME
+
+  pads_stats_- plugin to get stats from etherpad lite (must have the ep_pads_stats plugin)
+
+=head1 AUTHOR AND COPYRIGHT
+
+  Copyright 2015 Luc Didry <luc AT didry.org>
+
+=head1 HOWTO CONFIGURE AND USE :
+
+=over
+
+=item - /etc/munin/plugin-conf.d/pads_stats
+
+     [pads_stats]
+     env.urls https://pad.example.org https://pad.whatever.org
+
+=item - env.urls
+
+  This is the URLs of the etherpad instances to get stats from (without trailing slash)
+
+  You can specify the port, or a login and a password for HTTP authentication
+
+     https://login:password@pad.example.org:9001   
+
+=item - /etc/munin/plugins
+
+     ln -s pads_stats /etc/munin/plugins/pads_stats
+
+=item - restart Munin node
+
+     service munin-node restart
+
+=back
+
+=head1 DEPENDENCIES
+
+  You will need the Perl distribution Mojolicious
+
+  Although it is certainly available in your GNU/Linux packages, it recommended to install it trough the cpan command:
+
+     cpan Mojolicious
+
+  If you want to monitor secured etherpad instances (HTTPS), you need IO::Socket::SSL (may require libssl-dev to install)
+
+     cpan IO::Socket::SSL
+
+=head1 LICENSE
+
+  This program is free software: you can redistribute it and/or modify it under
+  the terms of the GNU General Public License as published by the Free Software
+  Foundation, either version 3 of the License, or any later version.
+
+  This program is distributed in the hope that it will be useful, but WITHOUT
+  ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+  FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more details.
+
+  You should have received a copy of the GNU General Public License along with
+  this program.  If not, see <http://www.gnu.org/licenses/>.
+
+=cut
+
+use warnings;
+use strict;
+use Munin::Plugin;
+use Mojo::UserAgent;
+use Mojo::JSON qw(decode_json);
+
+my $PLUGIN_NAME = 'pads_stats';
+
+munin_exit_fail() unless (defined($ENV{urls}));
+
+my @urls = split(' ', $ENV{urls});
+
+##### config
+if( (defined $ARGV[0]) && ($ARGV[0] eq 'config') ) {
+    print "multigraph pads_stats\n";
+    print "graph_title Pads Stats\n";
+    print "graph_vlabel Number of pads\n";
+    print "graph_args --lower-limit 0\n";
+    print "graph_category etherpad\n";
+    print "graph_total Total\n";
+    print "graph_info This graph shows the count of pads across multiple Etherpad lite instance\n";
+    my $i = 0;
+    for my $url (@urls) {
+        my $u    = Mojo::URL->new($url);
+        my $host = $u->host;
+        $host    =~ s/\./_/g;
+        my $draw = ($i++) ? 'AREA' : 'STACK';
+        print $host, '.label '.$host, "\n";
+        print $host, '.draw '.$draw, "\n";
+    }
+    munin_exit_done();
+}
+
+##### fetch
+my $ua = Mojo::UserAgent->new();
+for my $url (@urls) {
+    $url   = $url.'/stats.json';
+    my $u  = Mojo::URL->new($url);
+    my $tx = $ua->get($url);
+    if (my $res = $tx->success) {
+        my $r = decode_json($res->body);
+        my $host = $u->host;
+        $host    =~ s/\./_/g;
+        print $host, '.value ', $r->{padsCount}, "\n";
+    }
+}
+munin_exit_done();
+
+#
+##
+### INTERNALS FONCTIONS
+###############################################################################
+sub munin_exit_done {
+    munin_exit(0);
+} ## sub munin_exit_done
+
+sub munin_exit_fail {
+    munin_exit(1);
+} ## sub munin_exit_fail
+
+sub munin_exit {
+    my $exitcode = shift;
+    exit($exitcode) if(defined $exitcode);
+    exit(1);
+} ## sub munin_exit
