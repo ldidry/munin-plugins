@@ -24,7 +24,7 @@
 
   You can specify the port, or a login and a password for HTTP authentication
 
-     https://login:password@pad.example.org:9001   
+     https://login:password@pad.example.org:9001
 
 =item - /etc/munin/plugins
 
@@ -90,14 +90,27 @@ if( (defined $ARGV[0]) && ($ARGV[0] eq 'config') ) {
         my $host = $u->host;
         $host    =~ s/\./_/g;
         my $draw = ($i++) ? 'AREASTACK' : 'AREA';
-        print $host, '.label '.$host, "\n";
-        print $host, '.draw '.$draw, "\n";
+        print "$host.label $host\n";
+        print "$host.draw $draw\n";
+    }
+    for my $url (@urls) {
+        my $u    = Mojo::URL->new($url);
+        my $host = $u->host;
+        $host    =~ s/\./_/g;
+        print "multigraph pads_stats.$host\n";
+        print "graph_title Pads Stats for ".$u->host."\n";
+        print "graph_vlabel Number of pads on ".$u->host."\n";
+        print "graph_args --lower-limit 0\n";
+        print "graph_category etherpad\n";
+        print "$host.label $host\n";
+        print "$host.draw AREA\n";
     }
     munin_exit_done();
 }
 
 ##### fetch
 my $ua = Mojo::UserAgent->new();
+my %cache;
 for my $url (@urls) {
     $url   = $url.'/stats.json';
     my $u  = Mojo::URL->new($url);
@@ -107,7 +120,15 @@ for my $url (@urls) {
         my $host = $u->host;
         $host    =~ s/\./_/g;
         print $host, '.value ', $r->{padsCount}, "\n";
+        $cache{$host} = $r->{padsCount};
     }
+}
+for my $url (@urls) {
+    my $u  = Mojo::URL->new($url);
+    my $host = $u->host;
+    $host    =~ s/\./_/g;
+    print "multigraph pads_stats.$host\n";
+    print $host, '.value ', $cache{$host}, "\n";
 }
 munin_exit_done();
 
