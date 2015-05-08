@@ -18,6 +18,7 @@
      [postfwd2]
      user root
      env.path /usr/local/sbin/postfwd2 # OPTIONAL : looks for postfwd2 in /bin, /sbin, /usr/bin, /usr/sbin, /usr/local/bin, /usr/local/sbin
+     env.port 10040 # OPTIONAL
      env.include .*ISBAD #OPTIONAL
      env.exclude .*ISGOOD #OPTIONAL
 
@@ -156,8 +157,14 @@ if (!defined($ENV{path}) || !(-x $ENV{path})) {
 }
 munin_exit_fail() unless (defined($ENV{path}) && -x $ENV{path});
 
+my $port_arg = "";
+
+if(defined($ENV{port})) {
+	$port_arg = "--port " . $ENV{port};
+}
+
 ##### I have to parse the output BEFORE config, since policy matchs are dependant of the postfwd --dumpstats output
-open(DATA, $ENV{path}.' --dumpstats |') or munin_exit_fail();
+open(DATA, $ENV{path}.' --dumpstats ' . $port_arg .' |') or munin_exit_fail();
 my $total_requests;
 while(defined (my $data = <DATA>)) {
     if ($data =~ m/^\[STATS\] postfwd2::cache .*: (\d+) queries since/) {
